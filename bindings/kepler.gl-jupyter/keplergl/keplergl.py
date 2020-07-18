@@ -5,6 +5,7 @@ import pandas as pd
 import geopandas
 import shapely.wkt
 import json
+import boto3
 from ._version import EXTENSION_SPEC_VERSION
 
 documentation = 'https://docs.kepler.gl/docs/keplergl-jupyter'
@@ -134,8 +135,8 @@ class KeplerGl(widgets.DOMWidget):
 
         self.data = copy
 
-    def save_to_html(self, data=None, config=None, file_name='keplergl_map.html', read_only=False, center_map=False):
-        ''' Save current map to an interactive html
+    def save_to_s3(self, bucket, folder_path, data=None, config=None, file_name='mobile_export.html', read_only=False, center_map=False):
+        ''' Save current map to S3 bucket
 
         Inputs:
         - data: a data dictionary {"name": data}, if not provided, will use current map data
@@ -154,6 +155,8 @@ class KeplerGl(widgets.DOMWidget):
             keplergl.save_to_html(file_name='first_map.html')
 
         '''
+        s3 = boto3.resource('s3')
+
         keplergl_html = resource_string(__name__, 'static/keplergl.html').decode('utf-8')
         # find open of body
         k = keplergl_html.find("<body>")
@@ -169,7 +172,19 @@ class KeplerGl(widgets.DOMWidget):
         cmd = """window.__keplerglDataConfig = {};""".format(keplergl_data)
         frame_txt = keplergl_html[:k] + "<body><script>" + cmd + "</script>" + keplergl_html[k+6:]
 
-        with open(file_name,'wb') as f:
-            f.write(frame_txt.encode('utf-8'))
+        frame_txt = frame_txt.encode('utf-8')
+    
+        str_obj = StringIO() # instantiate in-memory string object
+        frame_txt.save(str_obj, 'html') # saving to memory string object
+        buf = str_obj.getvalue().encode('utf-8') # convert in-memory string to bytes
+
+        s3.put_object(
+        Bucket=BUCKET, 
+        Key=f'{folder_path}/{file_name}',
+        Body=buf
+        )
+
+        # with open(file_name,'wb') as f:
+        #     f.write(frame_txt.encode('utf-8'))
 
         print("Map saved to {}!".format(file_name))
